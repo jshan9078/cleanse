@@ -13,12 +13,20 @@ struct Screenshot: Identifiable, Hashable {
     var id: URL { url }
 }
 
+struct TrashRecord {
+    let original: URL
+    let trashed: URL
+}
+
 @MainActor
 final class Library: ObservableObject {
     @Published var shots: [Screenshot] = []
     @Published var selection: Set<URL> = []
     @Published var carouselIndex: Int = 0
     @Published var lastError: String?
+    @Published private(set) var undoStack: [[TrashRecord]] = []
+
+    var canUndo: Bool { !undoStack.isEmpty }
 
     private var thumbCache: [URL: NSImage] = [:]
 
@@ -78,9 +86,14 @@ final class Library: ObservableObject {
     func trash(_ urls: [URL]) {
         let fm = FileManager.default
         var failures: [String] = []
+        var batch: [TrashRecord] = []
         for url in urls {
             do {
-                try fm.trashItem(at: url, resultingItemURL: nil)
+                var trashedURL: NSURL?
+                try fm.trashItem(at: url, resultingItemURL: &trashedURL)
+                if let trashedURL = trashedURL as URL? {
+                    batch.append(TrashRecord(original: url, trashed: trashedURL))
+                }
                 thumbCache[url] = nil
                 selection.remove(url)
                 if let idx = shots.firstIndex(where: { $0.url == url }) {
@@ -91,7 +104,31 @@ final class Library: ObservableObject {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
+        if !batch.isEmpty { undoStack.append(batch) }
         if carouselIndex >= shots.count { carouselIndex = max(0, shots.count - 1) }
+        lastError = failures.isEmpty ? nil : failures.joined(separator: "\n")
+    }
+
+    /// Restores the most recently trashed batch back to its original location.
+    func undoLastDelete() {
+        guard let batch = undoStack.popLast() else { return }
+        let fm = FileManager.default
+        var failures: [String] = []
+        var restored: [URL] = []
+        for record in batch {
+            do {
+                try fm.moveItem(at: record.trashed, to: record.original)
+                restored.append(record.original)
+            } catch {
+                failures.append("\(record.original.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        scan()
+        if let first = restored.first,
+           let idx = shots.firstIndex(where: { $0.url == first }) {
+            carouselIndex = idx
+            selection.formUnion(restored)
+        }
         lastError = failures.isEmpty ? nil : failures.joined(separator: "\n")
     }
 }
@@ -101,6 +138,34 @@ final class Library: ObservableObject {
 enum ViewMode: String, CaseIterable {
     case grid = "Grid"
     case carousel = "Carousel"
+}
+
+/// A small keyboard-key badge, e.g. ⌫ or D.
+struct KeyCap: View {
+    let key: String
+    var body: some View {
+        Text(key)
+            .font(.caption.weight(.semibold))
+            .monospaced()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 4).fill(.quaternary))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.quaternary))
+    }
+}
+
+/// A "KEY action" pair for shortcut hint rows.
+struct KeyHint: View {
+    let keys: [String]
+    let action: String
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(keys, id: \.self) { KeyCap(key: $0) }
+            Text(action)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
 }
 
 struct ContentView: View {
@@ -121,6 +186,15 @@ struct ContentView: View {
         }
         .frame(minWidth: 900, minHeight: 600)
         .navigationSubtitle("\(library.shots.count) screenshots")
+        // Invisible button so U works in both view modes, regardless of focus.
+        .background {
+            Button("Undo Delete") { library.undoLastDelete() }
+                .keyboardShortcut("u", modifiers: [])
+                .disabled(!library.canUndo)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Picker("View", selection: $mode) {
@@ -207,10 +281,21 @@ struct GridScreen: View {
                 Button("Deselect All") { library.selection.removeAll() }
                     .disabled(library.selection.isEmpty)
                 Spacer()
+                HStack(spacing: 12) {
+                    KeyHint(keys: ["⌫"], action: "delete selected")
+                    KeyHint(keys: ["U"], action: "undo")
+                }
                 Text(library.selection.isEmpty
                      ? "Click screenshots to select them"
                      : "\(library.selection.count) selected")
                     .foregroundStyle(.secondary)
+                Button {
+                    library.undoLastDelete()
+                } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!library.canUndo)
+                .help("Restores the last deleted screenshots from the Trash (U)")
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
@@ -354,16 +439,28 @@ struct CarouselScreen: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    HStack(spacing: 12) {
+                        KeyHint(keys: ["←", "→"], action: "navigate")
+                        KeyHint(keys: ["D"], action: "delete")
+                        KeyHint(keys: ["U"], action: "undo")
+                    }
                     Text("\(library.carouselIndex + 1) of \(library.shots.count)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                    Button {
+                        library.undoLastDelete()
+                    } label: {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(!library.canUndo)
+                    .help("Restores the last deleted screenshots from the Trash (U)")
                     Button(role: .destructive) {
                         deleteCurrent()
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
                     .keyboardShortcut(.delete, modifiers: [])
-                    .help("Moves this screenshot to the Trash (or press D)")
+                    .help("Moves this screenshot to the Trash (D)")
                 }
                 .padding(12)
                 .background(.bar)
