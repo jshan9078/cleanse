@@ -299,11 +299,24 @@ struct GridCell: View {
 
 struct CarouselScreen: View {
     @ObservedObject var library: Library
-    @FocusState private var focused: Bool
 
     private var current: Screenshot? {
         guard library.shots.indices.contains(library.carouselIndex) else { return nil }
         return library.shots[library.carouselIndex]
+    }
+
+    private func previous() {
+        if library.carouselIndex > 0 { library.carouselIndex -= 1 }
+    }
+
+    private func next() {
+        if library.carouselIndex < library.shots.count - 1 { library.carouselIndex += 1 }
+    }
+
+    // Removing the current shot makes the next one slide into this index.
+    private func deleteCurrent() {
+        guard let shot = current else { return }
+        library.trash([shot.url])
     }
 
     var body: some View {
@@ -322,12 +335,12 @@ struct CarouselScreen: View {
                     }
                     HStack {
                         arrowButton("chevron.left", disabled: library.carouselIndex == 0) {
-                            library.carouselIndex -= 1
+                            previous()
                         }
                         Spacer()
                         arrowButton("chevron.right",
                                     disabled: library.carouselIndex >= library.shots.count - 1) {
-                            library.carouselIndex += 1
+                            next()
                         }
                     }
                     .padding(.horizontal, 16)
@@ -345,29 +358,30 @@ struct CarouselScreen: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     Button(role: .destructive) {
-                        library.trash([shot.url])
+                        deleteCurrent()
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
                     .keyboardShortcut(.delete, modifiers: [])
-                    .help("Moves this screenshot to the Trash")
+                    .help("Moves this screenshot to the Trash (or press D)")
                 }
                 .padding(12)
                 .background(.bar)
             }
         }
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(.leftArrow) {
-            if library.carouselIndex > 0 { library.carouselIndex -= 1 }
-            return .handled
+        // Invisible buttons so the shortcuts work no matter what has focus.
+        .background {
+            Group {
+                Button("Previous") { previous() }.keyboardShortcut(.leftArrow, modifiers: [])
+                Button("Previous") { previous() }.keyboardShortcut(.upArrow, modifiers: [])
+                Button("Next") { next() }.keyboardShortcut(.rightArrow, modifiers: [])
+                Button("Next") { next() }.keyboardShortcut(.downArrow, modifiers: [])
+                Button("Delete") { deleteCurrent() }.keyboardShortcut("d", modifiers: [])
+            }
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
         }
-        .onKeyPress(.rightArrow) {
-            if library.carouselIndex < library.shots.count - 1 { library.carouselIndex += 1 }
-            return .handled
-        }
-        .onAppear { focused = true }
     }
 
     private func arrowButton(_ symbol: String, disabled: Bool, action: @escaping () -> Void) -> some View {
