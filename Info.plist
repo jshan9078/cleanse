@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Cleanse</string>
+	<key>CFBundleDisplayName</key>
+	<string>Cleanse</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.cleanse.Cleanse</string>
+	<key>CFBundleExecutable</key>
+	<string>Cleanse</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Cleanse scans your Desktop for screenshot files so you can review and delete them.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Cleanse scans your Downloads for screenshot files so you can review and delete them.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Cleanse scans your Documents for screenshot files so you can review and delete them.</string>
+</dict>
+</plist>
